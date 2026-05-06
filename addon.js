@@ -31,8 +31,8 @@ async function initAddon() {
     });
 
     const builder = new addonBuilder({
-        id: "org.streamedpk.ultimate.v4",
-        version: "4.0.0",
+        id: "org.streamedpk.ultimate.v5",
+        version: "5.0.0",
         name: "Streamed.pk Ultimate",
         description: "Live NBA, MLB, NHL, Football & more",
         resources: ["catalog", "stream"],
