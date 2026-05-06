@@ -1,65 +1,76 @@
 const { addonBuilder } = require("stremio-addon-sdk");
 const fetch = require("node-fetch");
 
-const manifest = {
-    id: "org.sportsstream.pk",
-    version: "1.0.5", // Incremented version
-    name: "Streamed.pk Live Sports",
-    description: "Live NBA, MLB, NHL, and Football from streamed.pk",
-    resources: ["catalog", "stream"],
-    types: ["tv"],
-    catalogs: [{ type: "tv", id: "sports_all", name: "Popular Live Sports" }]
-};
+const API_BASE = "https://streamed.pk/api";
 
-const builder = new addonBuilder(manifest);
-
-builder.defineCatalogHandler(async () => {
+async function apiFetch(endpoint) {
     try {
-        // Fetching ALL matches instead of just football
-        const res = await fetch('https://streamed.pk/api/matches/all');
-        const matches = await res.json();
-        
-        const metas = matches
-            .filter(match => match.sources && match.sources.length > 0)
-            .map(match => {
-                // Use the API's poster or a generated one
-                const posterUrl = match.poster || `https://streamed.pk/api/images/poster/${match.id}`;
-
-                return {
-                    id: `pk:${match.sources[0].source}:${match.sources[0].id}`,
-                    type: "tv",
-                    name: match.title,
-                    poster: posterUrl,
-                    background: posterUrl,
-                    description: `${match.category || 'Sports'} - Live at ${match.time || 'now'}`
-                };
-            });
-        
-        return { metas };
-    } catch (e) { 
-        console.error(e);
-        return { metas: [] }; 
+        const res = await fetch(`${API_BASE}${endpoint}`);
+        return res.ok ? await res.json() : [];
+    } catch (e) {
+        console.error(`API Error: ${endpoint}`, e);
+        return [];
     }
-});
+}
 
-builder.defineStreamHandler(async (args) => {
-    if (args.id.startsWith("pk:")) {
-        const [_, source, id] = args.id.split(":");
-        try {
-            // This fetches the actual video link
-            const res = await fetch(`https://streamed.pk/api/stream/${source}/${id}`);
-            const streamsData = await res.json();
-            
+function getPosterUrl(match) {
+    if (match.poster) return `${API_BASE}/images/proxy/${match.poster}.webp`;
+    if (match.teams?.home?.badge && match.teams?.away?.badge) {
+        return `${API_BASE}/images/poster/${match.teams.home.badge}/${match.teams.away.badge}.webp`;
+    }
+    if (match.teams?.home?.badge) return `${API_BASE}/images/badge/${match.teams.home.badge}.webp`;
+    return "https://placehold.co/600x400?text=Live+Sports";
+}
+
+async function initAddon() {
+    const sports = await apiFetch('/sports');
+    const catalogs = [{ type: "tv", id: "spk_live", name: "Live Now (All Sports)" }];
+
+    sports.forEach(sport => {
+        catalogs.push({ type: "tv", id: `spk_${sport.id}`, name: sport.name });
+    });
+
+    const builder = new addonBuilder({
+        id: "org.streamedpk.ultimate",
+        version: "3.0.0",
+        name: "Streamed.pk Ultimate",
+        description: "Live NBA, MLB, NHL, Football & more",
+        resources: ["catalog", "stream"],
+        types: ["tv"],
+        catalogs: catalogs
+    });
+
+    builder.defineCatalogHandler(async (args) => {
+        let endpoint = (args.id === "spk_live") ? '/matches/live' : `/matches/${args.id.replace("spk_", "")}`;
+        const matches = await apiFetch(endpoint);
+        return {
+            metas: matches.filter(m => m.sources?.length > 0).map(match => ({
+                id: `pk:${match.sources[0].source}:${match.sources[0].id}`,
+                type: "tv",
+                name: match.title,
+                poster: getPosterUrl(match),
+                background: getPosterUrl(match),
+                description: `${match.category.toUpperCase()} | Popular: ${match.popular ? '🔥' : 'Live'}`
+            }))
+        };
+    });
+
+    builder.defineStreamHandler(async (args) => {
+        if (args.id.startsWith("pk:")) {
+            const [_, source, sourceId] = args.id.split(":");
+            const streamsData = await apiFetch(`/stream/${source}/${sourceId}`);
             return {
                 streams: streamsData.map(s => ({
-                    name: "Streamed.pk",
-                    title: s.name,
-                    url: s.url // The direct .m3u8 link
+                    name: `SPK: ${s.source.toUpperCase()}`,
+                    title: `${s.language} ${s.hd ? ' [HD]' : ''}\nStream #${s.streamNo}`,
+                    externalUrl: s.embedUrl 
                 }))
             };
-        } catch (e) { return { streams: [] }; }
-    }
-    return { streams: [] };
-});
+        }
+        return { streams: [] };
+    });
 
-module.exports = builder.getInterface();
+    return builder.getInterface();
+}
+
+module.exports = initAddon();
