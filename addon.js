@@ -3,46 +3,45 @@ const fetch = require("node-fetch");
 
 const API_BASE = "https://streamed.pk/api";
 
-async function apiFetch(endpoint) {
-    try {
-        const res = await fetch(`${API_BASE}${endpoint}`);
-        return res.ok ? await res.json() : [];
-    } catch (e) {
-        console.error(`API Error: ${endpoint}`, e);
-        return [];
-    }
-}
+// 1. Static Manifest (Ensures instant startup)
+const manifest = {
+    id: "org.streamedpk.ultimate.v6",
+    version: "6.0.0",
+    name: "Streamed.pk Ultimate",
+    description: "Live NBA, MLB, NHL, Football & more",
+    resources: ["catalog", "stream"],
+    types: ["tv"],
+    idPrefixes: ["pk:"],
+    catalogs: [
+        { type: "tv", id: "spk_live", name: "Live Now (All Sports)" },
+        { type: "tv", id: "spk_football", name: "Football" },
+        { type: "tv", id: "spk_basketball", name: "Basketball" },
+        { type: "tv", id: "spk_hockey", name: "Hockey" },
+        { type: "tv", id: "spk_baseball", name: "Baseball" }
+    ]
+};
 
+const builder = new addonBuilder(manifest);
+
+// Helper for images based on your API docs
 function getPosterUrl(match) {
     if (match.poster) return `${API_BASE}/images/proxy/${match.poster}.webp`;
     if (match.teams?.home?.badge && match.teams?.away?.badge) {
         return `${API_BASE}/images/poster/${match.teams.home.badge}/${match.teams.away.badge}.webp`;
     }
-    if (match.teams?.home?.badge) return `${API_BASE}/images/badge/${match.teams.home.badge}.webp`;
     return "https://placehold.co/600x400?text=Live+Sports";
 }
 
-async function initAddon() {
-    const sports = await apiFetch('/sports');
-    const catalogs = [{ type: "tv", id: "spk_live", name: "Live Now (All Sports)" }];
+// 2. Catalog Handler
+builder.defineCatalogHandler(async (args) => {
+    let endpoint = "/matches/live";
+    if (args.id !== "spk_live") {
+        endpoint = `/matches/${args.id.replace("spk_", "")}`;
+    }
 
-    sports.forEach(sport => {
-        catalogs.push({ type: "tv", id: `spk_${sport.id}`, name: sport.name });
-    });
-
-    const builder = new addonBuilder({
-        id: "org.streamedpk.ultimate.v5",
-        version: "5.0.0",
-        name: "Streamed.pk Ultimate",
-        description: "Live NBA, MLB, NHL, Football & more",
-        resources: ["catalog", "stream"],
-        types: ["tv"],
-        catalogs: catalogs
-    });
-
-    builder.defineCatalogHandler(async (args) => {
-        let endpoint = (args.id === "spk_live") ? '/matches/live' : `/matches/${args.id.replace("spk_", "")}`;
-        const matches = await apiFetch(endpoint);
+    try {
+        const res = await fetch(`${API_BASE}${endpoint}`);
+        const matches = await res.json();
         
         return {
             metas: matches.filter(m => m.sources?.length > 0).map(match => ({
@@ -54,12 +53,19 @@ async function initAddon() {
                 description: `${match.category.toUpperCase()} | Live`
             }))
         };
-    });
+    } catch (e) {
+        console.error("Catalog Error:", e);
+        return { metas: [] };
+    }
+});
 
-    builder.defineStreamHandler(async (args) => {
-        if (args.id.startsWith("pk:")) {
-            const [_, source, sourceId] = args.id.split(":");
-            const streamsData = await apiFetch(`/stream/${source}/${sourceId}`);
+// 3. Stream Handler
+builder.defineStreamHandler(async (args) => {
+    if (args.id.startsWith("pk:")) {
+        const [_, source, sourceId] = args.id.split(":");
+        try {
+            const res = await fetch(`${API_BASE}/stream/${source}/${sourceId}`);
+            const streamsData = await res.json();
             
             return {
                 streams: streamsData.map(s => ({
@@ -68,11 +74,12 @@ async function initAddon() {
                     externalUrl: s.embedUrl
                 }))
             };
+        } catch (e) {
+            console.error("Stream Error:", e);
+            return { streams: [] };
         }
-        return { streams: [] };
-    });
+    }
+    return { streams: [] };
+});
 
-    return builder.getInterface();
-}
-
-module.exports = initAddon();
+module.exports = builder.getInterface();
