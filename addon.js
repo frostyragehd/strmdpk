@@ -3,10 +3,10 @@ const fetch = require("node-fetch");
 
 const API_BASE = "https://streamed.pk/api";
 
-// 1. Static Manifest (Ensures instant startup)
+// 1. Static Manifest for instant startup
 const manifest = {
-    id: "org.streamedpk.ultimate.v6",
-    version: "6.0.0",
+    id: "org.streamedpk.ultimate.v7",
+    version: "7.0.0",
     name: "Streamed.pk Ultimate",
     description: "Live NBA, MLB, NHL, Football & more",
     resources: ["catalog", "stream"],
@@ -23,12 +23,13 @@ const manifest = {
 
 const builder = new addonBuilder(manifest);
 
-// Helper for images based on your API docs
+// Helper for images: Handles Proxy, Posters, and Badges from your API docs
 function getPosterUrl(match) {
     if (match.poster) return `${API_BASE}/images/proxy/${match.poster}.webp`;
     if (match.teams?.home?.badge && match.teams?.away?.badge) {
         return `${API_BASE}/images/poster/${match.teams.home.badge}/${match.teams.away.badge}.webp`;
     }
+    if (match.teams?.home?.badge) return `${API_BASE}/images/badge/${match.teams.home.badge}.webp`;
     return "https://placehold.co/600x400?text=Live+Sports";
 }
 
@@ -40,19 +41,19 @@ builder.defineCatalogHandler(async (args) => {
     }
 
     try {
-        const res = await fetch(`${API_BASE}${endpoint}`);
-        const matches = await res.json();
+        const response = await fetch(`${API_BASE}${endpoint}`);
+        const matches = await response.json();
         
-        return {
-            metas: matches.filter(m => m.sources?.length > 0).map(match => ({
-                id: `pk:${match.sources[0].source}:${match.sources[0].id}`,
-                type: "tv",
-                name: match.title,
-                poster: getPosterUrl(match),
-                background: getPosterUrl(match),
-                description: `${match.category.toUpperCase()} | Live`
-            }))
-        };
+        const metas = matches.filter(m => m.sources && m.sources.length > 0).map(match => ({
+            id: `pk:${match.sources[0].source}:${match.sources[0].id}`,
+            type: "tv",
+            name: match.title,
+            poster: getPosterUrl(match),
+            background: getPosterUrl(match),
+            description: `${match.category.toUpperCase()} | Live`
+        }));
+        
+        return { metas };
     } catch (e) {
         console.error("Catalog Error:", e);
         return { metas: [] };
@@ -64,13 +65,13 @@ builder.defineStreamHandler(async (args) => {
     if (args.id.startsWith("pk:")) {
         const [_, source, sourceId] = args.id.split(":");
         try {
-            const res = await fetch(`${API_BASE}/stream/${source}/${sourceId}`);
-            const streamsData = await res.json();
+            const response = await fetch(`${API_BASE}/stream/${source}/${sourceId}`);
+            const streamsData = await response.json();
             
             return {
                 streams: streamsData.map(s => ({
-                    name: `SPK: ${s.source.toUpperCase()}`,
-                    title: `${s.language} ${s.hd ? ' [HD]' : ''}\nStream #${s.streamNo}`,
+                    name: `SPK: ${source.toUpperCase()}`,
+                    title: `${s.language || 'English'} ${s.hd ? '[HD]' : '[SD]'} - Stream #${s.streamNo}`,
                     externalUrl: s.embedUrl
                 }))
             };
