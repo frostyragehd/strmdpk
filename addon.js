@@ -13,12 +13,12 @@ async function apiFetch(endpoint) {
     }
 }
 
-// Fixed Image Logic based on your docs
 function getPosterUrl(match) {
     if (match.poster) return `${API_BASE}/images/proxy/${match.poster}.webp`;
     if (match.teams?.home?.badge && match.teams?.away?.badge) {
         return `${API_BASE}/images/poster/${match.teams.home.badge}/${match.teams.away.badge}.webp`;
     }
+    if (match.teams?.home?.badge) return `${API_BASE}/images/badge/${match.teams.home.badge}.webp`;
     return "https://placehold.co/600x400?text=Live+Sports";
 }
 
@@ -31,8 +31,8 @@ async function initAddon() {
     });
 
     const builder = new addonBuilder({
-        id: "org.streamedpk.ultimate.v3", // Changed ID to force Stremio to refresh
-        version: "3.0.0",
+        id: "org.streamedpk.ultimate.v4",
+        version: "4.0.0",
         name: "Streamed.pk Ultimate",
         description: "Live NBA, MLB, NHL, Football & more",
         resources: ["catalog", "stream"],
@@ -46,7 +46,6 @@ async function initAddon() {
         
         return {
             metas: matches.filter(m => m.sources?.length > 0).map(match => ({
-                // CRITICAL: This ID must match what the Stream Handler looks for
                 id: `pk:${match.sources[0].source}:${match.sources[0].id}`,
                 type: "tv",
                 name: match.title,
@@ -58,11 +57,22 @@ async function initAddon() {
     });
 
     builder.defineStreamHandler(async (args) => {
-        // args.id will look like "pk:alpha:match123"
         if (args.id.startsWith("pk:")) {
             const [_, source, sourceId] = args.id.split(":");
             const streamsData = await apiFetch(`/stream/${source}/${sourceId}`);
             
             return {
                 streams: streamsData.map(s => ({
-                    name:
+                    name: `SPK: ${s.source.toUpperCase()}`,
+                    title: `${s.language} ${s.hd ? ' [HD]' : ''}\nStream #${s.streamNo}`,
+                    externalUrl: s.embedUrl
+                }))
+            };
+        }
+        return { streams: [] };
+    });
+
+    return builder.getInterface();
+}
+
+module.exports = initAddon();
