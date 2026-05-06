@@ -4,7 +4,7 @@
   "description": "Stremio addon for sports",
   "main": "server.js",
   "dependencies": {
-    "stremio-addon-sdk": "^3.0.0",
+    "stremio-addon-sdk": "latest",
     "node-fetch": "^2.6.7"
   },
   "scripts": {
