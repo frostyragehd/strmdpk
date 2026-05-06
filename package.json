@@ -1,7 +1,7 @@
 {
-  "name": "stremio-streamed-pk",
-  "version": "1.0.0",
-  "description": "Stremio addon for sports",
+  "name": "stremio-streamed-pk-ultimate",
+  "version": "3.0.0",
+  "description": "Ultimate Stremio addon for streamed.pk",
   "main": "server.js",
   "dependencies": {
     "stremio-addon-sdk": "latest",
